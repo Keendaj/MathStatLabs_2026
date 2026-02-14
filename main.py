@@ -121,7 +121,7 @@ def print_results_table(dist_name, results, size):
         print(f"| {name:<25} | {mean_val:>12.6f} | {var_val:>12.6f} | {error_str:>14} |")
 
 def main():
-    random = np.random.default_rng(3)
+    random = np.random.default_rng(5)
     sample_sizes = [10, 100, 1000]
     n_simulations = 1000
     
@@ -153,7 +153,7 @@ def main():
 
             print_results_table(dist_name, size_results, size)
     
-    random = np.random.default_rng(3)
+    random = np.random.default_rng(5)
 
     data = { "Нормальное": [], "Коши": [], "Лапласа": [], "Пуассона": [], "Равномерное": [] }
     sample_sizes = [10, 100, 1000]
