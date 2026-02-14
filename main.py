@@ -2,10 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
-def calculate_bins(data, size):
+def calculate_bins(data):
     iqr = np.percentile(data, 75) - np.percentile(data, 25)
     if iqr > 0:
-        h_fd = 2 * iqr / (size ** (1/3))
+        h_fd = 2 * iqr / (len(data) ** (1/3))
         bins = int((max(data) - min(data)) / h_fd)
     else:
         bins = 10
@@ -37,7 +37,7 @@ def paint_distribution(name, data_list, sample_sizes):
     for idx, (data, size) in enumerate(zip(data_list, sample_sizes)):
         ax = axes[idx]
         
-        bins_count = calculate_bins(data, size)
+        bins_count = calculate_bins(data)
 
         if name == "Коши":
             vmin, vmax = np.percentile(data, [1, 99])
@@ -45,7 +45,7 @@ def paint_distribution(name, data_list, sample_sizes):
             
             x_range = np.linspace(vmin, vmax, 1000)
             
-            bins_count = calculate_bins(data_clean, len(data_clean))
+            bins_count = calculate_bins(data_clean)
             ax.hist(data_clean, bins=bins_count, density=True, color=hist_color,
                     alpha=0.7, edgecolor='white', linewidth=1, label='Случайное (обрезано 1-99%)')
         elif name == "Пуассона":
@@ -89,17 +89,17 @@ def paint_distribution(name, data_list, sample_sizes):
     
     return
 
-def calculate_characteristics(sample):
-    mean = np.mean(sample)
-    median = np.median(sample)
-    zR = (np.min(sample) + np.max(sample)) / 2
-    q14, q34 = np.percentile(sample, [25, 75])
+def calculate_characteristics(data):
+    mean = np.mean(data)
+    median = np.median(data)
+    zR = (np.min(data) + np.max(data)) / 2
+    q14, q34 = np.percentile(data, [25, 75])
     zQ = (q14 + q34) / 2
-    n = len(sample)
+    n = len(data)
     trim_count = int(n * 0.1)
     if trim_count > 0:
-        sorted_sample = np.sort(sample)
-        trimmed = sorted_sample[trim_count: -trim_count]
+        sorted_data = np.sort(data)
+        trimmed = sorted_data[trim_count: -trim_count]
         ztr = np.mean(trimmed)
     
     return { 'mean': mean, 'median': median, 'zR': zR, 'zQ': zQ, 'ztr': ztr }
