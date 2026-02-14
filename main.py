@@ -104,25 +104,6 @@ def calculate_characteristics(sample):
     
     return { 'mean': mean, 'median': median, 'zR': zR, 'zQ': zQ, 'ztr': ztr }
 
-def simulate_distribution(dist_name, dist_func, sample_size=1000, n_simulations=1000):
-    results = { 'mean': [], 'median': [], 'zR': [], 'zQ': [], 'ztr': []}
-
-    for _ in range(n_simulations):
-        sample = dist_func(sample_size)
-        stats = calculate_characteristics(sample)
-        
-        for key in results:
-            results[key].append(stats[key])
-
-    final_results = {}
-    for key, values in results.items():
-        final_results[key] = {
-            'mean': np.mean(values),
-            'variance': np.var(values, ddof=1)
-        }
-    
-    return final_results
-
 def print_results_table(dist_name, results, size):
     print("")
     print(f" {dist_name} РАСПРЕДЕЛЕНИЕ (n = {size})".center(69))
