@@ -39,16 +39,7 @@ def paint_distribution(name, data_list, sample_sizes):
         
         bins_count = calculate_bins(data)
 
-        if name == "Коши":
-            vmin, vmax = np.percentile(data, [1, 99])
-            data_clean = data[(data >= vmin) & (data <= vmax)]
-            
-            x_range = np.linspace(vmin, vmax, 1000)
-            
-            bins_count = calculate_bins(data_clean)
-            ax.hist(data_clean, bins=bins_count, density=True, color=hist_color,
-                    alpha=0.7, edgecolor='white', linewidth=1, label='Случайное (обрезано 1-99%)')
-        elif name == "Пуассона":
+        if name == "Пуассона":
             unique, counts = np.unique(data, return_counts=True)
             ax.bar(unique, counts/len(data), width=0.8, color=hist_color, 
                    alpha=0.7, edgecolor='white', linewidth=1, label='Случайное')
@@ -64,6 +55,8 @@ def paint_distribution(name, data_list, sample_sizes):
         else:
             if name == "Коши":
                 x_range = np.linspace(-10, 10, 1000)
+                if(size >= 100):
+                    x_range = np.linspace(-100, 100, 10000)
             elif name == "Равномерное":
                 x_range = np.linspace(-2, 2, 1000)
             elif name == "Лапласа":
@@ -74,7 +67,9 @@ def paint_distribution(name, data_list, sample_sizes):
             y_theor = get_theoretical(name, x_range)
             ax.plot(x_range, y_theor, color=true_color, linewidth=3, 
                    label='Теоретическое')
-        
+        if name == "Коши" and size >= 100:
+            ax.set_yscale('log')
+
         ax.set_title(f'Размер выборки: {size}', fontsize=14, fontweight='bold')
         ax.set_xlabel('Значение', fontsize=11)
         ax.set_ylabel('Плотность вероятности', fontsize=11)
@@ -107,7 +102,7 @@ def calculate_characteristics(data):
 def print_results_table(dist_name, results, size):
     print("")
     print(f" {dist_name} РАСПРЕДЕЛЕНИЕ (n = {size})".center(69))
-    print(f"| {'Оценка':<25} | {'Среднее':>12} | {'Дисперсия':>12} | {'<x> +- D':>14} |")
+    print(f"| {'Оценка':<25} | {'Среднее':>12} | {'Дисперсия':>12} | {'<x> +- sqrt(D)':>14} |")
     print(f"|{'-'*27}|{'-'*14}|{'-'*14}|{'-'*16}|")
     
     names = [ 'mean', 'median', 'zR', 'zQ', 'ztr' ]
@@ -116,7 +111,7 @@ def print_results_table(dist_name, results, size):
         mean_val = results[name]['mean']
         var_val = results[name]['variance']
         mean_rounded = round(mean_val, 1)
-        std_rounded = round(var_val, 1)
+        std_rounded = round(np.sqrt(var_val), 1)
         error_str = f"{mean_rounded:.1f} +- {std_rounded:.1f}"
         print(f"| {name:<25} | {mean_val:>12.6f} | {var_val:>12.6f} | {error_str:>14} |")
 
