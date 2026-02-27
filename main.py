@@ -2,59 +2,108 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
-def paint_distribution(name, data, sample_sizes):
+def paint_emp(name, samples, sample_sizes, dist, interval):
+    a, b = interval
     fig, axes = plt.subplots(1, len(sample_sizes), figsize=(18, 6))
     
-    boxplot_color = '#3498db'
     for i, size in enumerate(sample_sizes):
         ax = axes[i]
-        ax.boxplot(data[i], patch_artist=True, boxprops=dict(facecolor=boxplot_color))
+        sample = samples[size]
+
+        x_sorted = np.sort(sample)
         
-        ax.set_title(f'Размер выборки: {size}', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Выборка', fontsize=11)
-        ax.set_ylabel('Значение', fontsize=11)
-        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        x_full = np.concatenate(([a], x_sorted, [b]))
+        y_full = np.concatenate(([0.0], np.arange(1, len(sample)+1)/len(sample), [1.0]))
+        
+        ax.step(x_full, y_full, where='post', 
+                label='Эмпирическая', 
+                color='blue', linewidth=1.5)
+
+        if name == "Пуассона":
+            grid = np.arange(a, b + 1)
+            ax.step(grid, dist.cdf(grid), where='post', 
+                    label='Теоретическая', color='red', linewidth=1.8)
+        else:
+            grid = np.linspace(a, b, 1001)
+            ax.plot(grid, dist.cdf(grid), 
+                    label='Теоретическая', color='red', linewidth=1.8)
+        
+        ax.set_xlim(a, b)
+        ax.set_ylim(-0.02, 1.02)
+        ax.set_title(f'n = {size}', fontsize=14)
+        ax.grid(True, alpha=0.3, ls='--')
+        ax.legend(fontsize=10)
     
-    fig.suptitle(f'{name} распределение', fontsize=18, fontweight='bold', y=1.0)
+    fig.suptitle(f'{name} распределение: Функции распределения', fontsize=18, fontweight='bold', y=1.0)
     plt.subplots_adjust(top=0.8)
     plt.tight_layout()
     plt.show()
+
+def paint_core(name, samples, sample_sizes, dist, interval):
+    a, b = interval
+    fig, axes = plt.subplots(1, len(sample_sizes), figsize=(18, 6))
     
-def count_outliers(data):
-    q1 = np.percentile(data, 25)
-    q3 = np.percentile(data, 75)
-    iqr = q3 - q1
-    lower_bound = q1 - 1.5 * iqr
-    upper_bound = q3 + 1.5 * iqr
-    outliers = [x for x in data if x < lower_bound or x > upper_bound]
-    return len(outliers)
+    for i, size in enumerate(sample_sizes):
+        ax = axes[i]
+        sample = samples[size]
+
+        kde = stats.gaussian_kde(sample)
+        if name == "Пуассона":
+            grid = np.arange(a, b + 1)
+            fine_grid = np.linspace(a, b, 1000)
+            ax.plot(fine_grid, kde(fine_grid), label='Ядерная оценка', color='blue')
+            ax.plot(grid, dist.pmf(grid), 'o-', label='Теоретическая', color='red')
+        else:
+            grid = np.linspace(a, b, 1000)
+            ax.plot(grid, kde(grid), label='Ядерная оценка', color='blue')
+            ax.plot(grid, dist.pdf(grid), label='Теоретическая', color='red')
+        
+        ax.set_xlim(a, b)
+        ax.set_title(f'Размер выборки: {size}', fontsize=14, fontweight='bold')
+        ax.set_xlabel('x', fontsize=11)
+        ax.set_ylabel('f(x)', fontsize=11)
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        ax.legend()
+    
+    fig.suptitle(f'{name} распределение: Оценки плотности', fontsize=18, fontweight='bold', y=1.0)
+    plt.subplots_adjust(top=0.8)
+    plt.tight_layout()
+    plt.show()
 
 def main():
-    random = np.random.default_rng(5)
-
-    data = { "Нормальное": [], "Коши": [], "Лапласа": [], "Пуассона": [], "Равномерное": [] }
-    sample_sizes = [20, 100]
-    n_simulations = 1000
-    outliers_count_for_simulations = {name: {size: [] for size in sample_sizes} for name in data.keys()}
-    for j in range(n_simulations):
-        for i in sample_sizes:
-            data["Нормальное"].append(random.normal(0, 1, i))
-            data["Коши"].append(random.standard_cauchy(i))
-            data["Лапласа"].append(random.laplace(0, 1/np.sqrt(2), i))
-            data["Пуассона"].append(random.poisson(10, i))
-            data["Равномерное"].append(random.uniform(-np.sqrt(3), np.sqrt(3), i))
-            for name in data:
-                outliers_count_for_simulations[name][i].append(count_outliers(data[name][-1]))
-        if(j==1):
-            for name in data:
-                paint_distribution(name, data[name], sample_sizes)
-                
-    for name in data:
-        print(f"{name} распределение:")
-        for size in sample_sizes:
-            mean_outliers = np.mean(np.array(outliers_count_for_simulations[name][size])/size)
-            print(f"Средняя доля выбросов для размера {size}: {mean_outliers:.2f}")
-        
+    random = np.random.default_rng(4)
+    
+    dist_names = ["Нормальное", "Коши", "Лапласа", "Пуассона", "Равномерное"]
+    sample_sizes = [20, 60, 100]
+    
+    dists = {
+        "Нормальное": stats.norm(0, 1),
+        "Коши": stats.cauchy(),
+        "Лапласа": stats.laplace(0, 1 / np.sqrt(2)),
+        "Пуассона": stats.poisson(10),
+        "Равномерное": stats.uniform(-np.sqrt(3), 2 * np.sqrt(3))
+    }
+    
+    intervals = {
+        "Пуассона": (6, 14)
+    }
+    for name in dist_names:
+        if name not in intervals:
+            intervals[name] = (-4, 4)
+    
+    data = {name: {size: None for size in sample_sizes} for name in dist_names}
+    
+    for size in sample_sizes:
+        data["Нормальное"][size] = random.normal(0, 1, size)
+        data["Коши"][size] = random.standard_cauchy(size)
+        data["Лапласа"][size] = random.laplace(0, 1 / np.sqrt(2), size)
+        data["Пуассона"][size] = random.poisson(10, size)
+        data["Равномерное"][size] = random.uniform(-np.sqrt(3), np.sqrt(3), size)
+    
+    for name in dist_names:
+        paint_emp(name, data[name], sample_sizes, dists[name], intervals[name])
+        paint_core(name, data[name], sample_sizes, dists[name], intervals[name])
+    
 
 if __name__ == "__main__":
     main()
