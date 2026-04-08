@@ -1,206 +1,96 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
-from matplotlib.patches import Ellipse
+import scipy.optimize as opt
 
-def print_results_table(final_data, dist_name):
-    print(f"\n" + "="*60)
-    print(f"РАСПРЕДЕЛЕНИЕ: {dist_name.upper()}")
-    print("="*60)
+def mlm_objective(params, x, y):
+    a, b = params
+    return np.sum(np.abs(y - (a + b * x)))
+
+def calculate_metrics(a_est, b_est, a_true=2.0, b_true=2.0):
+    delta_a = np.abs(a_true - a_est)
+    delta_a_pct = (delta_a / np.abs(a_true)) * 100
     
-    for ct in final_data.keys():
-        print(f"\nКоэффициент: {ct}")
-        
-        sample_sizes = sorted(final_data[ct]["Среднее"][dist_name].keys())
-        first_size = sample_sizes[0]
-        recorded_rhos = sorted(final_data[ct]["Среднее"][dist_name][first_size].keys())
-        
-        header_rho = "n".ljust(5)
-        header_md = "".ljust(5)
-        
-        for rho in recorded_rhos:
-            header_rho += f"rho = {rho}".center(25)
-            header_md += "M".center(12) + "D".center(13)
-        
-        print(header_rho)
-        print(header_md)
-        print("-" * len(header_rho))
-
-        for size in sample_sizes:
-            row_str = f"{size:<5}"
-            for rho in recorded_rhos:
-                m = final_data[ct]["Среднее"][dist_name][size][rho]
-                d = final_data[ct]["Дисперсия"][dist_name][size][rho]
-                row_str += f"{m:12.3f}{d:13.3f}"
-            print(row_str)
-
-def calc_quadratic_correlation(x, y):
-    med_x = np.median(x)
-    med_y = np.median(y)
-    x = x - med_x
-    y = y - med_y
-    n1 = np.sum((x > 0) & (y > 0))
-    n2 = np.sum((x < 0) & (y > 0))
-    n3 = np.sum((x < 0) & (y < 0))
-    n4 = np.sum((x > 0) & (y < 0))
-
-    rq = (n1 + n3 - n2 - n4) / len(x)
-    return rq
-
-def plot_subplots_ellipses(size, min_vals, max_vals, rho_keys, title_prefix, n_std=3.0):
-    fig, axes = plt.subplots(1, len(rho_keys), figsize=(5 * len(rho_keys), 5))
+    delta_b = np.abs(b_true - b_est)
+    delta_b_pct = (delta_b / np.abs(b_true)) * 100
     
-    if len(rho_keys) == 1:
-        axes = [axes]
-        
-    colors = {0: 'blue', 0.5: 'green', 0.9: 'red', 'mix': 'purple'}
-    
-    for ax, rho in zip(axes, rho_keys):
-        x = (min_vals[size][rho]['x'] + max_vals[size][rho]['x']) / 2
-        y = (min_vals[size][rho]['y'] + max_vals[size][rho]['y']) / 2
-        
-        current_color = colors.get(rho, 'blue')
-        
-        ax.scatter(x, y, s=15, alpha=0.3, color=current_color)
-        
-        cov = np.cov(x, y)
-        eigenvalues, eigenvectors = np.linalg.eigh(cov)
-        
-        order = eigenvalues.argsort()[::-1]
-        eigenvalues = eigenvalues[order]
-        eigenvectors = eigenvectors[:, order]
-        
-        theta = np.degrees(np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]))
-        width, height = 2 * n_std * np.sqrt(eigenvalues)
-        center_x, center_y = np.mean(x), np.mean(y)
-        
-        ellipse = Ellipse(
-            xy=(center_x, center_y),
-            width=width,
-            height=height,
-            angle=theta,
-            facecolor='none',   
-            edgecolor=current_color,    
-            linestyle='-',     
-            linewidth=2.5,
-            label=f'Эллипс ({n_std} std)'
-        )
-        ax.add_patch(ellipse)
-        ax.plot(center_x, center_y, marker='x', color=current_color, markersize=8)
+    return delta_a, delta_a_pct, delta_b, delta_b_pct
 
-        ax.axhline(0, color='black', lw=0.8, alpha=0.3)
-        ax.axvline(0, color='black', lw=0.8, alpha=0.3)
+def fit_models(x, y):
+    b_lsm, a_lsm = np.polyfit(x, y, 1)
+    
+    res = opt.minimize(mlm_objective, [a_lsm, b_lsm], args=(x, y))
+    a_mlm, b_mlm = res.x
+    
+    return (a_lsm, b_lsm), (a_mlm, b_mlm)
+
+def generate_base_data(size=20, a_true=2.0, b_true=2.0, seed=4):
+    x = np.linspace(-1.8, 2.0, size)
+    np.random.seed(seed)
+    eps = np.random.normal(0, 1, size=size)
+    y = a_true + b_true * x + eps
+    return x, y
+
+def create_outliers(y):
+    y_out = y.copy()
+    y_out[0] += 10
+    y_out[-1] -= 10
+    return y_out
+
+
+def print_table(title, models):
+    (a_lsm, b_lsm), (a_mlm, b_mlm) = models
+    
+    print(f"\n{title}")
+    print("-" * 80)
+    print(f"{'Метод':<6} | {'a':<8} | {'delta_a':<8} | {'delta_a, %':<10} | {'b':<8} | {'delta_b':<8} | {'delta_b, %':<10}")
+    print("-" * 80)
+    
+    da_lsm, da_p_lsm, db_lsm, db_p_lsm = calculate_metrics(a_lsm, b_lsm)
+    print(f"МНК    | {a_lsm:<8.3f} | {da_lsm:<8.3f} | {da_p_lsm:<10.3f} | {b_lsm:<8.3f} | {db_lsm:<8.3f} | {db_p_lsm:<10.3f}")
+    
+    da_mlm, da_p_mlm, db_mlm, db_p_mlm = calculate_metrics(a_mlm, b_mlm)
+    print(f"МНМ    | {a_mlm:<8.3f} | {da_mlm:<8.3f} | {da_p_mlm:<10.3f} | {b_mlm:<8.3f} | {db_mlm:<8.3f} | {db_p_mlm:<10.3f}")
+    print("-" * 80)
+
+def plot_regression_subplot(ax, x, y, models, title, is_outlier_plot=False):
+
+    (a_lsm, b_lsm), (a_mlm, b_mlm) = models
+    
+    ax.scatter(x, y, color='black', label='Выборка', zorder=5)
+    
+    if is_outlier_plot:
+        ax.scatter([x[0], x[-1]], [y[0], y[-1]], color='red', marker='x', s=100, zorder=6, label='Выбросы')
         
-        ax.set_aspect('equal', 'datalim')
-        
-        dist_name = "Смешанное" if rho == "mix" else f"ρ = {rho}"
-        ax.set_title(dist_name)
-        
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(loc='upper left')
-        
-    fig.suptitle(f"{title_prefix} (Размер выборки n={size})", fontsize=14, y=1.05)
+    ax.plot(x, 2 + 2*x, color='green', linestyle='--', label='Модель (истинная)')
+    ax.plot(x, a_lsm + b_lsm*x, color='red', label='МНК')
+    ax.plot(x, a_mlm + b_mlm*x, color='blue', label='МНМ')
+    
+    ax.set_title(title)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.legend()
+    ax.grid(True, linestyle=':', alpha=0.6)
+
+def plot_all_results(x, y_norm, models_norm, y_out, models_out):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    
+    plot_regression_subplot(axes[0], x, y_norm, models_norm, 'Регрессия (без выбросов)')
+    plot_regression_subplot(axes[1], x, y_out, models_out, 'Регрессия (с выбросами)', is_outlier_plot=True)
     
     plt.tight_layout()
     plt.show()
-    
+
 def main():
-    random = np.random.default_rng(4)
-    
-    dist_names = ["Нормальное", "Смешанное"]
-    sample_sizes = [20, 60, 100]
-    ro_values = [0, 0.5, 0.9]
-    iterations = 1000
+    x, y_norm = generate_base_data()
+    y_out = create_outliers(y_norm)
 
-    coef_types = ["Пирсон", "Спирмен", "Квадрантный"]
-    storage = {
-        ct: {dn: {size: {rho: [] for rho in ro_values} for size in sample_sizes} for dn in dist_names}
-        for ct in coef_types
-    }
+    models_norm = fit_models(x, y_norm)
+    models_out = fit_models(x, y_out)
 
-    min_vals = {
-        size: {rho: {'x': np.full(size, np.inf), 'y': np.full(size, np.inf)} for rho in ro_values + ["mix"]} 
-        for size in sample_sizes
-    }
-    max_vals = {
-        size: {rho: {'x': np.full(size, -np.inf), 'y': np.full(size, -np.inf)} for rho in ro_values + ["mix"]} 
-        for size in sample_sizes
-    }
+    print_table("ВЫБОРКА БЕЗ ВЫБРОСОВ", models_norm)
+    print_table("ВЫБОРКА С ВЫБРОСАМИ", models_out)
 
-    for i in range(iterations):
-        for size in sample_sizes:
-            for rho in ro_values:
-                cov_matrix = [[1, rho], [rho, 1]]
-                sample = random.multivariate_normal([0, 0], cov_matrix, size=size)
-                x, y = sample[:, 0], sample[:, 1]
-                
-                min_vals[size][rho]['x'] = np.minimum(min_vals[size][rho]['x'], x)
-                max_vals[size][rho]['x'] = np.maximum(max_vals[size][rho]['x'], x)
-                
-                min_vals[size][rho]['y'] = np.minimum(min_vals[size][rho]['y'], y)
-                max_vals[size][rho]['y'] = np.maximum(max_vals[size][rho]['y'], y)
+    plot_all_results(x, y_norm, models_norm, y_out, models_out)
 
-                storage["Пирсон"]["Нормальное"][size][rho].append(stats.pearsonr(x, y)[0])
-                storage["Спирмен"]["Нормальное"][size][rho].append(stats.spearmanr(x, y)[0])
-                storage["Квадрантный"]["Нормальное"][size][rho].append(calc_quadratic_correlation(x, y))
-
-            cov_matrix1 = [[1, 0.9], [0.9, 1]]
-            cov_matrix2 = [[10, -9], [-9, 10]]
-            
-            s1 = random.multivariate_normal([0, 0], cov_matrix1, size=size)
-            s2 = random.multivariate_normal([0, 0], cov_matrix2, size=size)
-
-            mixed_sample = s1 * 0.9 + s2 * 0.1
-            mx, my = mixed_sample[:, 0], mixed_sample[:, 1]
-
-            min_vals[size]["mix"]['x'] = np.minimum(min_vals[size]["mix"]['x'], mx)
-            max_vals[size]["mix"]['x'] = np.maximum(max_vals[size]["mix"]['x'], mx)
-                
-            min_vals[size]["mix"]['y'] = np.minimum(min_vals[size]["mix"]['y'], my)
-            max_vals[size]["mix"]['y'] = np.maximum(max_vals[size]["mix"]['y'], my)
-
-            storage["Пирсон"]["Смешанное"][size][0].append(stats.pearsonr(mx, my)[0])
-            storage["Спирмен"]["Смешанное"][size][0].append(stats.spearmanr(mx, my)[0])
-            storage["Квадрантный"]["Смешанное"][size][0].append(calc_quadratic_correlation(mx, my))
-
-    final_data = {ct: {"Среднее": {}, "Дисперсия": {}} for ct in coef_types}
-
-    for ct in coef_types:
-        for dn in dist_names:
-            final_data[ct]["Среднее"][dn] = {size: {} for size in sample_sizes}
-            final_data[ct]["Дисперсия"][dn] = {size: {} for size in sample_sizes}
-            
-            for size in sample_sizes:
-                active_ros = ro_values if dn == "Нормальное" else [0]
-                
-                for rho in active_ros:
-                    vals = storage[ct][dn][size][rho]
-                    final_data[ct]["Среднее"][dn][size][rho] = np.mean(vals)
-                    final_data[ct]["Дисперсия"][dn][size][rho] = np.var(vals)
-
-    print_results_table(final_data, "Нормальное")
-    print_results_table(final_data, "Смешанное")
-
-    for size in sample_sizes:   
-        plot_subplots_ellipses(
-            size=size, 
-            min_vals=min_vals, 
-            max_vals=max_vals, 
-            rho_keys=[0, 0.5, 0.9], 
-            title_prefix="Нормальное распределение", 
-            n_std=3.0 
-        )
-        
-        plot_subplots_ellipses(
-            size=size, 
-            min_vals=min_vals, 
-            max_vals=max_vals, 
-            rho_keys=["mix"], 
-            title_prefix="Смешанное распределение", 
-            n_std=3.0 
-        )
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
