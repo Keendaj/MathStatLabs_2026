@@ -38,59 +38,54 @@ def create_outliers(y):
 
 
 def print_table(title, models):
-    (a_lsm, b_lsm), (a_mlm, b_mlm) = models
+    (a_ols, b_ols), (a_lad, b_lad) = models
     
     print(f"\n{title}")
     print("-" * 80)
     print(f"{'Метод':<6} | {'a':<8} | {'delta_a':<8} | {'delta_a, %':<10} | {'b':<8} | {'delta_b':<8} | {'delta_b, %':<10}")
     print("-" * 80)
     
-    da_lsm, da_p_lsm, db_lsm, db_p_lsm = calculate_metrics(a_lsm, b_lsm)
-    print(f"МНК    | {a_lsm:<8.3f} | {da_lsm:<8.3f} | {da_p_lsm:<10.3f} | {b_lsm:<8.3f} | {db_lsm:<8.3f} | {db_p_lsm:<10.3f}")
+    da_ols, da_p_ols, db_ols, db_p_ols = calculate_metrics(a_ols, b_ols)
+    print(f"МНК    | {a_ols:<8.3f} | {da_ols:<8.3f} | {da_p_ols:<10.3f} | {b_ols:<8.3f} | {db_ols:<8.3f} | {db_p_ols:<10.3f}")
     
-    da_mlm, da_p_mlm, db_mlm, db_p_mlm = calculate_metrics(a_mlm, b_mlm)
-    print(f"МНМ    | {a_mlm:<8.3f} | {da_mlm:<8.3f} | {da_p_mlm:<10.3f} | {b_mlm:<8.3f} | {db_mlm:<8.3f} | {db_p_mlm:<10.3f}")
+    da_lad, da_p_lad, db_lad, db_p_lad = calculate_metrics(a_lad, b_lad)
+    print(f"МНМ    | {a_lad:<8.3f} | {da_lad:<8.3f} | {da_p_lad:<10.3f} | {b_lad:<8.3f} | {db_lad:<8.3f} | {db_p_lad:<10.3f}")
     print("-" * 80)
 
-def plot_regression_subplot(ax, x, y, models, title, is_outlier_plot=False):
-
-    (a_lsm, b_lsm), (a_mlm, b_mlm) = models
+def plot_single_regression(x, y, models, title, is_outlier_plot=False):
+    (a_ols, b_ols), (a_lad, b_lad) = models
     
-    ax.scatter(x, y, color='black', label='Выборка', zorder=5)
+    plt.figure(figsize=(8, 6))
+    
+    plt.scatter(x, y, color='black', label='Выборка', zorder=5)
     
     if is_outlier_plot:
-        ax.scatter([x[0], x[-1]], [y[0], y[-1]], color='red', marker='x', s=100, zorder=6, label='Выбросы')
+        plt.scatter([x[0], x[-1]], [y[0], y[-1]], color='red', marker='x', s=100, zorder=6, label='Выбросы')
         
-    ax.plot(x, 2 + 2*x, color='green', linestyle='--', label='Модель (истинная)')
-    ax.plot(x, a_lsm + b_lsm*x, color='red', label='МНК')
-    ax.plot(x, a_mlm + b_mlm*x, color='blue', label='МНМ')
+    plt.plot(x, 2 + 2*x, color='green', linestyle='--', label='Модель (истинная)')
+    plt.plot(x, a_ols + b_ols*x, color='red', label='МНК')
+    plt.plot(x, a_lad + b_lad*x, color='blue', label='МНМ')
     
-    ax.set_title(title)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.legend()
-    ax.grid(True, linestyle=':', alpha=0.6)
-
-def plot_all_results(x, y_norm, models_norm, y_out, models_out):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    
-    plot_regression_subplot(axes[0], x, y_norm, models_norm, 'Регрессия (без выбросов)')
-    plot_regression_subplot(axes[1], x, y_out, models_out, 'Регрессия (с выбросами)', is_outlier_plot=True)
-    
+    plt.title(title)
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.legend()
+    plt.grid(True, linestyle=':', alpha=0.6)
     plt.tight_layout()
-    plt.show()
 
 def main():
     x, y_norm = generate_base_data()
     y_out = create_outliers(y_norm)
 
-    models_norm = fit_models(x, y_norm)
-    models_out = fit_models(x, y_out)
+    norm = fit_models(x, y_norm)
+    out = fit_models(x, y_out)
 
-    print_table("ВЫБОРКА БЕЗ ВЫБРОСОВ", models_norm)
-    print_table("ВЫБОРКА С ВЫБРОСАМИ", models_out)
+    print_table("ВЫБОРКА БЕЗ ВЫБРОСОВ", norm)
+    print_table("ВЫБОРКА С ВЫБРОСАМИ", out)
+    plot_single_regression(x, y_norm, norm, 'Регрессия (без выбросов)')
+    plot_single_regression(x, y_out, out, 'Регрессия (с выбросами)', is_outlier_plot=True)
 
-    plot_all_results(x, y_norm, models_norm, y_out, models_out)
+    plt.show()
 
 if __name__ == '__main__':
     main()
