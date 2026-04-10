@@ -2,41 +2,42 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
-def calculate_chi2_equiprobable(sample, alpha=0.05):
+def calculate_chi2(sample, alpha=0.05):
     n = len(sample)
     
     mu_hat = np.mean(sample)
     sigma_hat = np.std(sample, ddof=0)
     
-    k = int(np.round(1.72 * np.cbrt(n)))
-    if k < 2:
-        k = 2
-        
-    expected_freq = n / k
+    k = int(np.round(1 + 3.322 * np.log10(n)))
+    if k < 4:
+        k = 4
 
-    quantiles = np.linspace(0, 1, k + 1)
-    bins = stats.norm.ppf(quantiles, loc=mu_hat, scale=sigma_hat)
+    observed_freq, bin_edges = np.histogram(sample, bins=k)
     
-    bins[0] = -np.inf
-    bins[-1] = np.inf
+    cdf_edges = bin_edges.copy()
+    cdf_edges[0] = -np.inf
+    cdf_edges[-1] = np.inf
     
-    observed_freq, _ = np.histogram(sample, bins=bins)
-    expected_freqs = np.full(k, expected_freq)
+    p_i = np.zeros(k)
+    for i in range(k):
+        p_i[i] = stats.norm.cdf(cdf_edges[i+1], loc=mu_hat, scale=sigma_hat) - \
+                 stats.norm.cdf(cdf_edges[i], loc=mu_hat, scale=sigma_hat)
+                 
+    expected_freqs = n * p_i
     
     chi2_stat = np.sum((observed_freq - expected_freqs)**2 / expected_freqs)
-
-    df = k - 1 
     
+    df = k - 1 
     if df > 0:
-        critical_value = stats.chi2.ppf(1 - alpha, df) 
+        critical_value = stats.chi2.ppf(1 - alpha, df)
     else:
         critical_value = 0.0
-
-    return mu_hat, sigma_hat, chi2_stat, critical_value, df, bins, observed_freq, expected_freqs
+            
+    return mu_hat, sigma_hat, chi2_stat, critical_value, df, bin_edges, observed_freq, expected_freqs
 
 
 def plot_single_test(sample, dist_name, ax):
-    mu, sigma, chi2, crit, df, bins, obs, exp = calculate_chi2_equiprobable(sample)
+    mu, sigma, chi2, crit, df, bins, obs, exp = calculate_chi2(sample)
     
     plot_bins = bins.copy()
     plot_bins[0] = min(sample) - 0.5
@@ -77,7 +78,7 @@ def main():
     print("-" * 90)
     
     for name, sample in test_cases:
-        mu, sigma, chi2, crit_val, df, _, _, _ = calculate_chi2_equiprobable(sample, alpha)
+        mu, sigma, chi2, crit_val, df, _, _, _ = calculate_chi2(sample, alpha)
         
         decision = "Принимается" if chi2 < crit_val else "ОТКЛОНЯЕТСЯ"
         
