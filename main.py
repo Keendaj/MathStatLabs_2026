@@ -1,91 +1,95 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.optimize as opt
+from scipy import stats
 
-def mlm_objective(params, x, y):
-    a, b = params
-    return np.sum(np.abs(y - (a + b * x)))
-
-def calculate_metrics(a_est, b_est, a_true=2.0, b_true=2.0):
-    delta_a = np.abs(a_true - a_est)
-    delta_a_pct = (delta_a / np.abs(a_true)) * 100
+def calculate_chi2_equiprobable(sample, alpha=0.05):
+    n = len(sample)
     
-    delta_b = np.abs(b_true - b_est)
-    delta_b_pct = (delta_b / np.abs(b_true)) * 100
+    mu_hat = np.mean(sample)
+    sigma_hat = np.std(sample, ddof=0)
     
-    return delta_a, delta_a_pct, delta_b, delta_b_pct
-
-def fit_models(x, y):
-    b_lsm, a_lsm = np.polyfit(x, y, 1)
-    
-    res = opt.minimize(mlm_objective, [a_lsm, b_lsm], args=(x, y))
-    a_mlm, b_mlm = res.x
-    
-    return (a_lsm, b_lsm), (a_mlm, b_mlm)
-
-def generate_base_data(size=20, a_true=2.0, b_true=2.0, seed=4):
-    x = np.linspace(-1.8, 2.0, size)
-    np.random.seed(seed)
-    eps = np.random.normal(0, 1, size=size)
-    y = a_true + b_true * x + eps
-    return x, y
-
-def create_outliers(y):
-    y_out = y.copy()
-    y_out[0] += 10
-    y_out[-1] -= 10
-    return y_out
-
-
-def print_table(title, models):
-    (a_ols, b_ols), (a_lad, b_lad) = models
-    
-    print(f"\n{title}")
-    print("-" * 80)
-    print(f"{'Метод':<6} | {'a':<8} | {'delta_a':<8} | {'delta_a, %':<10} | {'b':<8} | {'delta_b':<8} | {'delta_b, %':<10}")
-    print("-" * 80)
-    
-    da_ols, da_p_ols, db_ols, db_p_ols = calculate_metrics(a_ols, b_ols)
-    print(f"МНК    | {a_ols:<8.3f} | {da_ols:<8.3f} | {da_p_ols:<10.3f} | {b_ols:<8.3f} | {db_ols:<8.3f} | {db_p_ols:<10.3f}")
-    
-    da_lad, da_p_lad, db_lad, db_p_lad = calculate_metrics(a_lad, b_lad)
-    print(f"МНМ    | {a_lad:<8.3f} | {da_lad:<8.3f} | {da_p_lad:<10.3f} | {b_lad:<8.3f} | {db_lad:<8.3f} | {db_p_lad:<10.3f}")
-    print("-" * 80)
-
-def plot_single_regression(x, y, models, title, is_outlier_plot=False):
-    (a_ols, b_ols), (a_lad, b_lad) = models
-    
-    plt.figure(figsize=(8, 6))
-    
-    plt.scatter(x, y, color='black', label='Выборка', zorder=5)
-    
-    if is_outlier_plot:
-        plt.scatter([x[0], x[-1]], [y[0], y[-1]], color='red', marker='x', s=100, zorder=6, label='Выбросы')
+    k = int(np.round(1.72 * np.cbrt(n)))
+    if k < 2:
+        k = 2
         
-    plt.plot(x, 2 + 2*x, color='green', linestyle='--', label='Модель (истинная)')
-    plt.plot(x, a_ols + b_ols*x, color='red', label='МНК')
-    plt.plot(x, a_lad + b_lad*x, color='blue', label='МНМ')
+    expected_freq = n / k
+
+    quantiles = np.linspace(0, 1, k + 1)
+    bins = stats.norm.ppf(quantiles, loc=mu_hat, scale=sigma_hat)
     
-    plt.title(title)
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.legend()
-    plt.grid(True, linestyle=':', alpha=0.6)
-    plt.tight_layout()
+    bins[0] = -np.inf
+    bins[-1] = np.inf
+    
+    observed_freq, _ = np.histogram(sample, bins=bins)
+    expected_freqs = np.full(k, expected_freq)
+    
+    chi2_stat = np.sum((observed_freq - expected_freqs)**2 / expected_freqs)
+
+    df = k - 1 
+    
+    if df > 0:
+        critical_value = stats.chi2.ppf(1 - alpha, df) 
+    else:
+        critical_value = 0.0
+
+    return mu_hat, sigma_hat, chi2_stat, critical_value, df, bins, observed_freq, expected_freqs
+
+
+def plot_single_test(sample, dist_name, ax):
+    mu, sigma, chi2, crit, df, bins, obs, exp = calculate_chi2_equiprobable(sample)
+    
+    plot_bins = bins.copy()
+    plot_bins[0] = min(sample) - 0.5
+    plot_bins[-1] = max(sample) + 0.5
+    
+    ax.hist(sample, bins=plot_bins, edgecolor='black', alpha=0.6, density=True, color='skyblue')
+    
+    x = np.linspace(plot_bins[0], plot_bins[-1], 1000)
+    pdf = stats.norm.pdf(x, loc=mu, scale=sigma)
+    ax.plot(x, pdf, 'r-', lw=2, label=f'N({mu:.2f}, {sigma:.2f})')
+    
+    for b in bins[1:-1]:
+        ax.axvline(b, color='red', linestyle='--', alpha=0.5, lw=1)
+        
+    ax.set_title(f"{dist_name} (n={len(sample)})\nχ²_набл={chi2:.2f}, χ²_крит={crit:.2f}")
+    ax.legend()
+    ax.grid(True, linestyle=':', alpha=0.6)
+
 
 def main():
-    x, y_norm = generate_base_data()
-    y_out = create_outliers(y_norm)
+    random = np.random.default_rng(6)
+    alpha = 0.05
+    
+    sample_norm = random.normal(0, 1, 100)
+    sample_unif = random.uniform(-np.sqrt(3), np.sqrt(3), 20)
+    sample_lapl = random.laplace(0, 1/np.sqrt(2), 20)
+    
+    test_cases = [
+        ("Нормальное N(0,1)", sample_norm),
+        ("Равномерное", sample_unif),
+        ("Лапласа", sample_lapl)
+    ]
 
-    norm = fit_models(x, y_norm)
-    out = fit_models(x, y_out)
+    print("="*90)
+    print("РЕЗУЛЬТАТЫ ПРОВЕРКИ ГИПОТЕЗЫ О НОРМАЛЬНОСТИ (α = 0.05)")
+    print("="*90)
+    print(f"{'Распределение':<20} | {'n':<5} | {'μ^':<5} | {'σ^':<5} | {'χ²_набл':<8} | {'χ²_крит':<8} | {'H0 (Нормальность)':<15}")
+    print("-" * 90)
+    
+    for name, sample in test_cases:
+        mu, sigma, chi2, crit_val, df, _, _, _ = calculate_chi2_equiprobable(sample, alpha)
+        
+        decision = "Принимается" if chi2 < crit_val else "ОТКЛОНЯЕТСЯ"
+        
+        print(f"{name:<20} | {len(sample):<5} | {mu:>5.2f} | {sigma:>5.2f} | {chi2:>8.2f} | {crit_val:>8.2f} | {decision:<15}")
 
-    print_table("ВЫБОРКА БЕЗ ВЫБРОСОВ", norm)
-    print_table("ВЫБОРКА С ВЫБРОСАМИ", out)
-    plot_single_regression(x, y_norm, norm, 'Регрессия (без выбросов)')
-    plot_single_regression(x, y_out, out, 'Регрессия (с выбросами)', is_outlier_plot=True)
-
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    for i, (name, sample) in enumerate(test_cases):
+        plot_single_test(sample, name, axes[i])
+    
+    plt.suptitle("Проверка гипотез о нормальности", fontsize=14)
+    plt.tight_layout()
     plt.show()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
