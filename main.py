@@ -1,96 +1,97 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import stats
 
-def calculate_chi2(sample, alpha=0.05):
+def calc_confidence_intervals(sample, alpha=0.05):
     n = len(sample)
     
-    mu_hat = np.mean(sample)
-    sigma_hat = np.std(sample, ddof=0)
+    mean_hat = np.mean(sample)
+    var_hat = np.var(sample, ddof=1)
+    std_hat = np.std(sample, ddof=1)
     
-    k = int(np.round(1 + 3.322 * np.log10(n)))
-    if k < 4:
-        k = 4
+    u_crit = stats.norm.ppf(1 - alpha/2)
+    
+    margin_of_error = u_crit * (std_hat / np.sqrt(n))
+    ci_mean = (mean_hat - margin_of_error, mean_hat + margin_of_error)
+    
+    e = stats.kurtosis(sample, fisher=True)
 
-    observed_freq, bin_edges = np.histogram(sample, bins=k)
+    U = u_crit * np.sqrt((e + 2) / n)
     
-    cdf_edges = bin_edges.copy()
-    cdf_edges[0] = -np.inf
-    cdf_edges[-1] = np.inf
+    lower_std = std_hat * (1 + U)**(-0.5)
+    upper_std = std_hat * (1 - U)**(-0.5) if U < 1 else np.inf 
     
-    p_i = np.zeros(k)
-    for i in range(k):
-        p_i[i] = stats.norm.cdf(cdf_edges[i+1], loc=mu_hat, scale=sigma_hat) - \
-                 stats.norm.cdf(cdf_edges[i], loc=mu_hat, scale=sigma_hat)
-                 
-    expected_freqs = n * p_i
+    ci_var = (lower_std**2, upper_std**2)
     
-    chi2_stat = np.sum((observed_freq - expected_freqs)**2 / expected_freqs)
+    return mean_hat, var_hat, ci_mean, ci_var
+
+def f_test_methodical(sample1, sample2, alpha=0.05):
+    var1 = np.var(sample1, ddof=1)
+    var2 = np.var(sample2, ddof=1)
     
-    df = k - 1 
-    if df > 0:
-        critical_value = stats.chi2.ppf(1 - alpha, df)
+    n1 = len(sample1)
+    n2 = len(sample2)
+    
+    if var1 >= var2:
+        var_max, var_min = var1, var2
+        df_num, df_den = n1 - 1, n2 - 1
+        num_name = "Выборка 1"
     else:
-        critical_value = 0.0
-            
-    return mu_hat, sigma_hat, chi2_stat, critical_value, df, bin_edges, observed_freq, expected_freqs
-
-
-def plot_single_test(sample, dist_name, ax):
-    mu, sigma, chi2, crit, df, bins, obs, exp = calculate_chi2(sample)
-    
-    plot_bins = bins.copy()
-    plot_bins[0] = min(sample) - 0.5
-    plot_bins[-1] = max(sample) + 0.5
-    
-    ax.hist(sample, bins=plot_bins, edgecolor='black', alpha=0.6, density=True, color='skyblue')
-    
-    x = np.linspace(plot_bins[0], plot_bins[-1], 1000)
-    pdf = stats.norm.pdf(x, loc=mu, scale=sigma)
-    ax.plot(x, pdf, 'r-', lw=2, label=f'N({mu:.2f}, {sigma:.2f})')
-    
-    for b in bins[1:-1]:
-        ax.axvline(b, color='red', linestyle='--', alpha=0.5, lw=1)
+        var_max, var_min = var2, var1
+        df_num, df_den = n2 - 1, n1 - 1
+        num_name = "Выборка 2"
         
-    ax.set_title(f"{dist_name} (n={len(sample)})\nχ²_набл={chi2:.2f}, χ²_крит={crit:.2f}")
-    ax.legend()
-    ax.grid(True, linestyle=':', alpha=0.6)
-
+    f_stat = var_max / var_min
+    
+    f_crit = stats.f.ppf(1 - alpha, df_num, df_den)
+    
+    if f_stat > f_crit:
+        decision = f"ОТКЛОНЯЕТСЯ (Дисперсия '{num_name}' значимо больше)"
+    else:
+        decision = "Принимается (H0: Дисперсии равны)"
+        
+    return f_stat, f_crit, decision, num_name
 
 def main():
-    random = np.random.default_rng(6)
+    rng = np.random.default_rng(4)
     alpha = 0.05
     
-    sample_norm = random.normal(0, 1, 100)
-    sample_unif = random.uniform(-np.sqrt(3), np.sqrt(3), 20)
-    sample_lapl = random.laplace(0, 1/np.sqrt(2), 20)
+    n1, n2 = 20, 100
+    sample1 = rng.normal(loc=0, scale=1, size=n1)
+    sample2 = rng.normal(loc=0, scale=1, size=n2)
     
-    test_cases = [
-        ("Нормальное N(0,1)", sample_norm),
-        ("Равномерное", sample_unif),
-        ("Лапласа", sample_lapl)
+    samples = [
+        (f"Выборка 1 (n={n1})", sample1),
+        (f"Выборка 2 (n={n2})", sample2)
     ]
-
-    print("="*90)
-    print("РЕЗУЛЬТАТЫ ПРОВЕРКИ ГИПОТЕЗЫ О НОРМАЛЬНОСТИ (α = 0.05)")
-    print("="*90)
-    print(f"{'Распределение':<20} | {'n':<5} | {'μ^':<5} | {'σ^':<5} | {'χ²_набл':<8} | {'χ²_крит':<8} | {'Результат':<15}")
-    print("-" * 90)
     
-    for name, sample in test_cases:
-        mu, sigma, chi2, crit_val, df, _, _, _ = calculate_chi2(sample, alpha)
-        
-        decision = "Принимается" if chi2 < crit_val else "ОТКЛОНЯЕТСЯ"
-        
-        print(f"{name:<20} | {len(sample):<5} | {mu:>5.2f} | {sigma:>5.2f} | {chi2:>8.2f} | {crit_val:>8.2f} | {decision:<15}")
-
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    for i, (name, sample) in enumerate(test_cases):
-        plot_single_test(sample, name, axes[i])
+    print("="*95)
+    print("2. ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ (α = 0.05)")
+    print("="*95)
+    print(f"{'Выборка':<18} | {'μ^ (Среднее)':<12} | {'ДИ для мат. ожидания':<25} | {'s² (Дисперсия)':<14} | {'ДИ для дисперсии':<25}")
+    print("-" * 95)
     
-    plt.suptitle("Проверка гипотез о нормальности", fontsize=14)
-    plt.tight_layout()
-    plt.show()
+    for name, sample in samples:
+        mean, var, ci_mean, ci_var = calc_confidence_intervals(sample, alpha)
+        ci_mean_str = f"[{ci_mean[0]:.3f}, {ci_mean[1]:.3f}]"
+        ci_var_str = f"[{ci_var[0]:.3f}, {ci_var[1]:.3f}]"
+        
+        print(f"{name:<18} | {mean:>12.3f} | {ci_mean_str:<25} | {var:>14.3f} | {ci_var_str:<25}")
+
+    print("\n" + "="*95)
+    print("3. F-ТЕСТ (КРИТЕРИЙ ФИШЕРА) НА РАВЕНСТВО ДИСПЕРСИЙ (α = 0.05)")
+    print("="*95)
+    
+    f_stat, f_crit, decision, num_name = f_test_methodical(sample1, sample2, alpha)
+    
+    print("H0: Дисперсии равны (σ1² = σ2²)")
+    print(f"H'1: Дисперсия бóльшей выборки > Дисперсии меньшей")
+    print("-" * 95)
+    print(f"В числителе          : {num_name} (дисперсия больше)")
+    print(f"F-статистика (набл.) : {f_stat:.4f}")
+    print(f"F-критическое (прав.): {f_crit:.4f}")
+    print(f"Условие F > F_crit   : {f_stat > f_crit}")
+    print(f"Результат            : {decision}")
+    print("="*95)
 
 if __name__ == "__main__":
     main()
